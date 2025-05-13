@@ -1,0 +1,139 @@
+¡Manos a la obra entonces! Vamos a empezar con la parte del backend en PHP para manejar la lógica principal de la aplicación. Te proporcionaré ejemplos de código para:
+
+1.  **Conexión a la base de datos MySQL.**
+2.  **Función para verificar la disponibilidad de un bloque.**
+3.  **Script para procesar el formulario de solicitud.**
+4.  **Script para obtener las solicitudes para mostrar en el calendario.**
+
+**Importante:** Estos son ejemplos básicos para ilustrar la lógica. Necesitarás adaptarlos a tu entorno de desarrollo, credenciales de base de datos y manejo de errores más robusto.
+
+**1. `conexion.php` (Archivo para la conexión a la base de datos):**
+
+```php
+<?php
+$host = 'localhost'; // Cambia esto si tu servidor MySQL está en otro lugar
+$dbname = 'reservas'; // Reemplaza con el nombre de tu base de datos
+$usuario = 'root'; // Reemplaza con tu usuario de MySQL
+$contrasena = ''; // Reemplaza con tu contraseña de MySQL
+
+try {
+    $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8", $usuario, $contrasena);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    die("Error al conectar a la base de datos: " . $e->getMessage());
+}
+?>
+```
+
+**2. `verificar_disponibilidad.php` (Función para verificar si un bloque está ocupado):**
+
+```php
+<?php
+require 'conexion.php';
+
+function verificarDisponibilidad($idRecurso, $FechaSolicitud, $Num_bloque) {
+    global $pdo;
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM Solicitud WHERE Recurso_idRecurso = :recurso AND FechaSolicitud = :fecha AND Num_bloque = :bloque");
+    $stmt->bindParam(':recurso', $idRecurso);
+    $stmt->bindParam(':fecha', $FechaSolicitud);
+    $stmt->bindParam(':bloque', $Num_bloque);
+    $stmt->execute();
+    $count = $stmt->fetchColumn();
+    return $count > 0; // Devuelve true si el bloque está ocupado, false si está libre
+}
+?>
+```
+
+**3. `procesar_solicitud.php` (Script para recibir y guardar la solicitud):**
+
+```php
+<?php
+require 'conexion.php';
+require 'verificar_disponibilidad.php';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $id_profesor = $_POST['idProfesor']; // Asegúrate de sanitizar y validar esta entrada
+    $id_recurso = $_POST['idRecurso'];   // Asegúrate de sanitizar y validar esta entrada
+    $fecha_solicitada = $_POST['FechaSolicitud']; // Asegúrate de sanitizar y validar esta entrada
+    $numero_bloque = $_POST['Num_bloque'];   // Asegúrate de sanitizar y validar esta entrada
+
+    // Validar que los campos no estén vacíos (puedes agregar más validaciones)
+    if (empty($idProfesor) || empty($idRecurso) || empty($FechaSolicitud) || empty($Num_bloque)) {
+        echo json_encode(['error' => 'Todos los campos son obligatorios.']);
+        exit();
+    }
+
+    // Verificar si el bloque ya está ocupado
+    if (verificarDisponibilidad($idRecurso, $FechaSolicitud, $Num_bloque)) {
+        echo json_encode(['error' => 'El bloque seleccionado ya está ocupado.']);
+        exit();
+    }
+
+    try {
+        $stmt = $pdo->prepare("INSERT INTO Solicitud (Profesor_idProfesor, Recurso_idRecurso, FechaSolicitud, Num_bloque) VALUES (:profesor, :recurso, :fecha, :bloque)");
+        $stmt->bindParam(':profesor', $idProfesor);
+        $stmt->bindParam(':recurso', $idRecurso);
+        $stmt->bindParam(':fecha', $FechaSolicitud);
+        $stmt->bindParam(':bloque', $Num_bloque);
+        $stmt->execute();
+
+        echo json_encode(['success' => 'Solicitud enviada correctamente.']);
+
+    } catch (PDOException $e) {
+        echo json_encode(['error' => 'Error al guardar la solicitud: ' . $e->getMessage()]);
+    }
+} else {
+    echo json_encode(['error' => 'Método de solicitud no válido.']);
+}
+?>
+```
+
+**4. `obtener_solicitudes.php` (Script para obtener las solicitudes para el calendario):**
+
+```php
+<?php
+require 'conexion.php';
+
+// Puedes agregar parámetros para filtrar por fecha o recurso si es necesario
+$stmt = $pdo->prepare("SELECT s.FechaSolicitud, s.Num_bloque, r.descripcion AS nombre_recurso, p.NombreFuncionario
+                       FROM Solicitud s
+                       JOIN Recurso r ON s.Recurso_idRecurso = r.idRecurso
+                       JOIN Profesor p ON s.Profesor_idProfesor = p.idProfesor
+                       ORDER BY s.FechaSolicitud, s.Num_bloque");
+$stmt->execute();
+$solicitudes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+echo json_encode($solicitudes);
+?>
+```
+
+**Explicación y Próximos Pasos:**
+
+* **`conexion.php`:** Establece la conexión con tu base de datos MySQL utilizando PDO (PHP Data Objects), que es una forma segura y flexible de interactuar con bases de datos.
+* **`verificar_disponibilidad.php`:** Contiene una función que toma el ID del recurso, la fecha y el número de bloque, y consulta la base de datos para ver si ya existe una solicitud para esa combinación.
+* **`procesar_solicitud.php`:**
+    * Se asegura de que la solicitud sea de tipo POST (cuando se envía un formulario).
+    * Recupera los datos del formulario (`$_POST`). **Es crucial sanitizar y validar estas entradas para prevenir problemas de seguridad.**
+    * Llama a la función `verificarDisponibilidad` para asegurarse de que el bloque esté libre.
+    * Si el bloque está libre, intenta insertar una nueva fila en la tabla `Solicitud` con el estado inicial 'pendiente'.
+    * Devuelve una respuesta en formato JSON para que el frontend pueda manejar el resultado (éxito o error).
+* **`obtener_solicitudes.php`:**
+    * Consulta la base de datos para obtener todas las solicitudes, junto con el nombre del recurso y el nombre del profesor (usando `JOIN` para combinar las tablas).
+    * Ordena los resultados por fecha y bloque para facilitar la visualización en el calendario.
+    * Devuelve los datos en formato JSON.
+
+**Próximos Pasos:**
+
+1.  **Configurar tu entorno:** Asegúrate de tener un servidor web (como Apache o Nginx) con PHP y MySQL instalados y funcionando. Crea la base de datos y las tablas según tu diseño.
+2.  **Modificar las credenciales:** Edita el archivo `conexion.php` con la información correcta de tu base de datos.
+3.  **Crear el Frontend (HTML, CSS, JavaScript):**
+    * Diseñar el formulario de solicitud que envíe los datos a `procesar_solicitud.php` mediante AJAX.
+    * Crear la estructura del calendario en HTML.
+    * Usar JavaScript para:
+        * Hacer una llamada AJAX a `obtener_solicitudes.php` para obtener los datos de las reservas.
+        * Manipular el DOM para mostrar el calendario y marcar los bloques ocupados.
+        * Implementar la lógica para deshabilitar los bloques ocupados en el formulario.
+4.  **Manejo de Errores y Seguridad:** Implementa una validación más robusta de los datos en el backend y considera medidas de seguridad como la protección contra inyección SQL.
+5.  **Autenticación:** Si es necesario, implementa un sistema de login para los profesores.
+
+¡Espero que este código te sea de gran ayuda para empezar! ¿Qué te gustaría abordar a continuación? ¿Quizás la estructura del formulario HTML o cómo podríamos usar JavaScript para mostrar el calendario?

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Solicitud de Sala</title>
+</head>
+<body>
+    <?php if (!isset($_SESSION['access_token'])): ?>
+        <p><a href="<?php echo filter_var($client->createAuthUrl(), FILTER_SANITIZE_URL); ?>">Conectar con Google Calendar</a></p>
+    <?php else: ?>
+        <h2>Solicitar Sala</h2>
+        <form method="post">
+            <label for="profesor_email">Email del Profesor:</label><br>
+            <input type="email" id="profesor_email" name="profesor_email" value="profesor@example.com" required><br><br>
+            <label for="nombre_sala">Nombre de la Sala:</label><br>
+            <input type="text" id="nombre_sala" name="nombre_sala" value="Sala de Reuniones 1" required><br><br>
+            <label for="fecha_solicitud">Fecha de Solicitud:</label><br>
+            <input type="date" id="fecha_solicitud" name="fecha_solicitud" value="<?php echo date('Y-m-d'); ?>" required><br><br>
+            <label for="hora_inicio">Hora de Inicio:</label><br>
+            <input type="time" id="hora_inicio" name="hora_inicio" value="09:00" required><br><br>
+            <label for="hora_fin">Hora de Fin:</label><br>
+            <input type="time" id="hora_fin" name="hora_fin" value="10:00" required><br><br>
+            <label for="motivo">Motivo de la Solicitud:</label><br>
+            <textarea id="motivo" name="motivo"></textarea><br><br>
+            <input type="submit" name="solicitar_sala" value="Solicitar Sala y Agregar a Calendar">
+        </form>
+    <?php endif; ?>
+</body>
+</html>

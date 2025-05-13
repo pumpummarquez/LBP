@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grilla Dinámica con Click en Celdas</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="estilos.css" rel="stylesheet">
+    <style>
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr); /* 9 columnas */
+            gap: 5px; /* Espacio entre celdas */
+        }
+        .grid-item {
+            border: 1px solid #ccc;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer; /* Indicar que la celda es clickable */
+        }
+        .day-column {
+            font-weight: bold;
+        }
+        .weekend {
+            background-color: #e0f7fa; /* Celeste claro */
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container mt-4">
+        <div class="mb-3">
+            <label for="monthSelector" class="form-label">Selecciona un mes:</label>
+            <select class="form-select" id="monthSelector">
+                <option value="1">Enero</option>
+                <option value="2">Febrero</option>
+                <option value="3">Marzo</option>
+                <option value="4">Abril</option>
+                <option value="5">Mayo</option>
+                <option value="6">Junio</option>
+                <option value="7">Julio</option>
+                <option value="8">Agosto</option>
+                <option value="9">Septiembre</option>
+                <option value="10">Octubre</option>
+                <option value="11">Noviembre</option>
+                <option value="12">Diciembre</option>
+            </select>
+        </div>
+
+        <div id="gridContainer" class="grid-container">
+        </div>
+    </div>
+    
+    <script>
+        const monthSelector = document.getElementById('monthSelector');
+        const gridContainer = document.getElementById('gridContainer');
+        const daysOfWeek = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
+        // Obtener el mes actual (0-11)
+        let currentYear = new Date().getFullYear(); // Definir como variable global
+        const currentMonth = new Date().getMonth();   
+        // Establecer la opción seleccionada en el selector al mes actual
+        monthSelector.value = currentMonth + 1;
+
+        monthSelector.addEventListener('change', function() {
+            const selectedMonth = parseInt(this.value);
+            generateGrid(selectedMonth);
+        });
+
+        function getDaysInMonth(month, year = new Date().getFullYear()) {
+            return new Date(year, month, 0).getDate();
+        }
+
+        function generateGrid(month) {
+
+            gridContainer.innerHTML = ''; // Limpiar la grilla anterior
+           
+            const daysInMonth = getDaysInMonth(month);
+            let currentYear = new Date().getFullYear(); // Definir como variable global            
+            for (let i = 1; i <= daysInMonth; i++) {
+                const currentDate = new Date(currentYear, month - 1, i);
+                const dayOfWeekIndex = currentDate.getDay();
+                const dayOfWeekName = daysOfWeek[dayOfWeekIndex];
+
+                for (let j = 0; j < 9; j++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('grid-item');
+                    cell.dataset.row = i; // Guardar la fila (día)
+                    cell.dataset.col = j + 1; // Guardar la columna (1-indexed)
+
+                    if (j === 0) {
+                        cell.classList.add('day-column');
+                        cell.textContent = i;
+                    } else if (j === 1) {
+                        cell.textContent = dayOfWeekName;
+                    }else {
+                        //cell.textContent = "ocupado"; //aca va si esta ocupado o no ajax
+                        // *** AQUI VA LA LLAMADA AJAX ***
+                        const fechaSolicitud = currentDate.toISOString().slice(0, 10); // Formato AAAA-MM-DD
+                        const numBloque = j - 1; // Ajustar el índice del bloque
+
+                        const fecha_inicial = `${currentYear}-${String(month).padStart(2, '0')}-01`; // Asegúrate del formato MM
+                        const fecha_final = `${currentYear}-${String(month).padStart(2, '0')}-${daysInMonth.toString().padStart(2, '0')}`; // Asegúrate del formato MM y DD
+
+
+                        fetch(`buscar_mensual.php?fecha_ini=${fecha_inicial}&fecha_fin=${fecha_final}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            // Asumiendo que 'fechaSolicitud' y 'numBloque' están definidos en el contexto donde se llama a este fetch
+                            const solicitud = data.find(
+                            item => item.FechaSolicitud === fechaSolicitud && parseInt(item.Num_bloque) === numBloque
+                            );
+
+                            if (solicitud) {
+                            cell.textContent = `Ocupado por ${solicitud.NombreProfesor}`; // Usar NombreProfesor (corregido del backend)
+                            cell.style.backgroundColor = 'yellow';
+                            // Opcionalmente, podrías cambiar el color del texto también
+                            // cell.style.color = 'black';
+                            } else {
+                            cell.textContent = "Disponible";
+                            cell.style.backgroundColor = ''; // Reestablecer el color de fondo (o a tu color por defecto)
+                            // Opcionalmente, reestablecer el color del texto
+                            // cell.style.color = '';
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error al obtener datos:', error);
+                            cell.textContent = "Error";
+                            cell.style.backgroundColor = 'red'; // Indicar error con otro color
+                        });
+                        }
+                        if (dayOfWeekIndex === 0 || dayOfWeekIndex === 6) {
+                            cell.classList.add('weekend');
+                        }
+
+                        cell.addEventListener('click', function() {
+                            const row = this.dataset.row;
+                            const col = this.dataset.col;
+                            const fecha_solicitada = `${currentYear}-${String(month).padStart(2, '0')}-${String(row).padStart(2, '0')}`;
+                            const numbloque_solicitado = (col - 2);
+                            if (cell.textContent!="Disponible"){
+                                alert("BLOQUE OCUPADO POR: "+cell.textContent);
+                                exit;
+                            }else{
+                            // Llenar los campos del modal con la información de la celda clickeada
+                            const fechaSolicitadaInput = document.getElementById('fecha_solicitada');
+                            const bloqueSolicitadoInput = document.getElementById('bloque_solicitado');
+
+                            fechaSolicitadaInput.value = fecha_solicitada;
+                            bloqueSolicitadoInput.value = numbloque_solicitado;
+
+                            // Obtener la referencia al modal y mostrarlo
+                            const modalSolicitud = document.getElementById('modal-solicitud');
+                            modalSolicitud.style.display = 'block';
+                            const selectRecurso = document.getElementById('idRecurso');
+                            while (selectRecurso.options.length > 1) { selectRecurso.remove(1); }
+                            fetch('obtener_recursos.php')
+                                .then(recursos => recursos.json()) // Primero, convierte la respuesta a JSON
+                                .then(recursos => { // Luego, trabaja con los datos JSON (ahora en la variable 'recursos')
+                                    recursos.forEach(recurso => {
+                                        const option = document.createElement('option');
+                                        option.value = recurso.idRecurso;
+                                        option.textContent = recurso.Descrip_Recurso;
+                                        idRecurso.appendChild(option);
+                                    });
+                                })
+                                .catch(error => {
+                                    console.error('Error al obtener los recursos:', error);
+                                    const optionError = document.createElement('option');
+                                    optionError.value = "";
+                                    optionError.textContent = "Error al cargar los recursos";
+                                    idRecurso.appendChild(optionError);
+                                })
+                            // Determinar si la celda está ocupada para mostrar/ocultar el botón "Eliminar"
+                            // (Necesitas tener acceso a los datos de ocupación aquí o hacer otra consulta)
+                            const solicitudEncontrada = true/* Lógica para buscar si la celda está ocupada en tus datos */;
+
+                            const btnEliminar = document.getElementById('btn-eliminar');
+                            if (btnEliminar) {
+                                if (solicitudEncontrada) {
+                                    btnEliminar.style.display = 'block';
+                                    // Aquí podrías almacenar el ID de la solicitud para eliminarla luego
+                                    // btnEliminar.dataset.solicitudId = solicitudEncontrada.idSolicitud;
+                                } else {
+                                    btnEliminar.style.display = 'none';
+                                    // delete btnEliminar.dataset.solicitudId;
+                                }
+                            }}
+                        });
+
+                        gridContainer.appendChild(cell);
+                    }
+            }
+        }
+
+        // Obtener el mes actual y generar la grilla inicial
+        const initialMonth = new Date().getMonth() + 1;
+        generateGrid(initialMonth);
+    </script>
+<div id="modal-solicitud" class="modal">
+    <div class="modal-content">
+        <span class="cerrar-modal">&times;</span>
+        <h2>Solicitar Sala</h2>
+        <form id="formulario-solicitud">
+            <div class="form-group">
+                <label for="NombreFuncionario">Profesor:</label>
+                <input type="text" id="NombreFuncionario" value="[Nombre del Profesor Logueado]" readonly>
+            </div>
+            <div class="form-group">
+                <label for="fecha_solicitada">Fecha:</label>
+                <input type="text" id="fecha_solicitada" readonly>
+            </div>
+            <div class="form-group">
+                <label for="bloque_solicitado">Bloque:</label>
+                <input type="text" id="bloque_solicitado" readonly>
+            </div>
+            <div class="form-group">
+                <label for="idRecurso">Seleccionar Recurso:</label>
+                <select class="form-select" id="idRecurso" name="idRecurso">
+                    <option value="" disabled selected>Seleccione un recurso</option>
+                </select>
+            </div>
+            <div class="botones-modal row gx-2">
+                <div class="col-auto">
+                    <button type="button" id="btn-eliminar" class="btn btn-danger">Eliminar</button>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary">Enviar Solicitud</button>
+                </div>
+                <div class="col-auto">
+                    <button type="button" id="btn-cancelar" class="btn btn-secondary">Cancelar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>    
+<script src="mi_carga.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+</body>
+</html>

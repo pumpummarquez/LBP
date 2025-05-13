@@ -1,0 +1,213 @@
+¡Excelente! Vamos a empezar a construir una estructura básica para integrar Google Calendar con tu sistema de solicitud de salas. Ten en cuenta que este será un esquema general y requerirá ajustes específicos para tu proyecto y la forma en que gestionas las solicitudes de sala.
+
+**Necesitarás la biblioteca de cliente de Google para PHP:**
+
+Primero, asegúrate de tener instalada la biblioteca de cliente de Google para PHP. Puedes instalarla usando Composer:
+
+```bash
+composer require google/apiclient:"^2.0"
+```
+
+**Estructura General del Código (PHP):**
+
+Aquí te presento una estructura general de cómo podría funcionar el código PHP. Asumiré que tienes una forma de obtener los detalles de la solicitud de sala (por ejemplo, desde un formulario o una base de datos).
+
+```php
+<?php
+
+require_once 'vendor/autoload.php'; // Autocargador de Composer
+
+// Configuración de la API de Google (reemplaza con tus credenciales)
+$client = new Google_Client();
+$client->setApplicationName('Tu Aplicación de Solicitud de Salas');
+$client->setAuthConfig('path/to/your/credentials.json'); // Archivo JSON de tus credenciales
+$client->setScopes(Google_Service_Calendar::CALENDAR_EVENTS);
+$client->setAccessType('offline'); // Para obtener un refresh token y tener acceso incluso cuando el usuario no está presente
+$client->setPrompt('consent'); // Para forzar la solicitud de consentimiento la primera vez
+
+// Inicia la sesión (si aún no está iniciada)
+if (session_status() == PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Redirige al usuario a la página de autorización de Google si no tiene un token de acceso
+if (!isset($_SESSION['access_token'])) {
+    $authUrl = $client->createAuthUrl();
+    header('Location: ' . filter_var($authUrl, FILTER_SANITIZE_URL));
+    exit();
+} else {
+    $client->setAccessToken($_SESSION['access_token']);
+}
+
+// Si se recibe el código de autorización de Google
+if (isset($_GET['code'])) {
+    $token = $client->fetchAccessTokenWithAuthCode($_GET['code']);
+    if (!isset($token['error'])) {
+        $_SESSION['access_token'] = $token;
+        $client->setAccessToken($token);
+    } else {
+        // Manejar el error al obtener el token
+        echo '<p>Ocurrió un error al obtener el token de acceso.</p>';
+        error_log('Error al obtener el token de acceso: ' . json_encode($token));
+        exit();
+    }
+}
+
+// Crea una instancia del servicio de Google Calendar
+$service = new Google_Service_Calendar($client);
+
+/**
+ * Función para agregar un evento al Google Calendar de un usuario
+ *
+ * @param Google_Service_Calendar $service Servicio de Google Calendar
+ * @param string $calendarId El ID del calendario (generalmente 'primary' para el calendario principal del usuario)
+ * @param string $summary Título del evento
+ * @param string $description Descripción del evento
+ * @param string $startDateTime Fecha y hora de inicio (formato RFC3339)
+ * @param string $endDateTime Fecha y hora de fin (formato RFC3339)
+ * @param string|null $timeZone Zona horaria (opcional, por defecto la del usuario)
+ * @return Google_Service_Calendar_Event|null El evento creado o null en caso de error
+ */
+function agregarEventoACalendario(Google_Service_Calendar $service, string $calendarId, string $summary, string $description, string $startDateTime, string $endDateTime, ?string $timeZone = null): ?Google_Service_Calendar_Event
+{
+    $event = new Google_Service_Calendar_Event(array(
+        'summary' => $summary,
+        'description' => $description,
+        'start' => array(
+            'dateTime' => $startDateTime,
+            'timeZone' => $timeZone ?? 'America/Santiago', // Puedes ajustar la zona horaria por defecto
+        ),
+        'end' => array(
+            'dateTime' => $endDateTime,
+            'timeZone' => $timeZone ?? 'America/Santiago',
+        ),
+        'reminders' => array(
+            'useDefault' => false,
+            'overrides' => array(
+                array('method' => 'popup', 'minutes' => 30), // Recordatorio 30 minutos antes
+            ),
+        ),
+    ));
+
+    try {
+        $createdEvent = $service->events->insert($calendarId, $event);
+        return $createdEvent;
+    } catch (Google_Service_Exception $e) {
+        error_log('Error al crear el evento en Google Calendar: ' . $e->getMessage());
+        return null;
+    }
+}
+
+// Ejemplo de cómo usar la función cuando se procesa una solicitud de sala
+if (isset($_POST['solicitar_sala'])) {
+    $profesorEmail = $_POST['profesor_email']; // Necesitarás el email del profesor para identificar su calendario (si es diferente al principal)
+    $nombreSala = $_POST['nombre_sala'];
+    $fechaSolicitud = $_POST['fecha_solicitud'];
+    $horaInicio = $_POST['hora_inicio'];
+    $horaFin = $_POST['hora_fin'];
+    $motivo = $_POST['motivo'];
+
+    // Formatea las fechas y horas al formato RFC3339 (ejemplo: 2025-04-10T14:30:00-03:00)
+    $startDateTime = date('Y-m-d\TH:i:sP', strtotime("$fechaSolicitud $horaInicio"));
+    $endDateTime = date('Y-m-d\TH:i:sP', strtotime("$fechaSolicitud $horaFin"));
+
+    $summary = "Reserva de Sala: $nombreSala";
+    $description = "Sala reservada para: $motivo";
+
+    // Llama a la función para agregar el evento
+    $eventoCreado = agregarEventoACalendario(
+        $service,
+        'primary', // O el ID del calendario del profesor si lo tienes
+        $summary,
+        $description,
+        $startDateTime,
+        $endDateTime
+    );
+
+    if ($eventoCreado) {
+        echo '<p>Se ha creado un recordatorio en tu Google Calendar.</p>';
+        // Redirigir o mostrar un mensaje de éxito
+    } else {
+        echo '<p>Ocurrió un error al crear el recordatorio en Google Calendar.</p>';
+        // Mostrar un mensaje de error
+    }
+}
+
+// Formulario de ejemplo (esto estaría en tu frontend)
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Solicitud de Sala</title>
+</head>
+<body>
+    <?php if (!isset($_SESSION['access_token'])): ?>
+        <p><a href="<?php echo filter_var($client->createAuthUrl(), FILTER_SANITIZE_URL); ?>">Conectar con Google Calendar</a></p>
+    <?php else: ?>
+        <h2>Solicitar Sala</h2>
+        <form method="post">
+            <label for="profesor_email">Email del Profesor:</label><br>
+            <input type="email" id="profesor_email" name="profesor_email" value="profesor@example.com" required><br><br>
+            <label for="nombre_sala">Nombre de la Sala:</label><br>
+            <input type="text" id="nombre_sala" name="nombre_sala" value="Sala de Reuniones 1" required><br><br>
+            <label for="fecha_solicitud">Fecha de Solicitud:</label><br>
+            <input type="date" id="fecha_solicitud" name="fecha_solicitud" value="<?php echo date('Y-m-d'); ?>" required><br><br>
+            <label for="hora_inicio">Hora de Inicio:</label><br>
+            <input type="time" id="hora_inicio" name="hora_inicio" value="09:00" required><br><br>
+            <label for="hora_fin">Hora de Fin:</label><br>
+            <input type="time" id="hora_fin" name="hora_fin" value="10:00" required><br><br>
+            <label for="motivo">Motivo de la Solicitud:</label><br>
+            <textarea id="motivo" name="motivo"></textarea><br><br>
+            <input type="submit" name="solicitar_sala" value="Solicitar Sala y Agregar a Calendar">
+        </form>
+    <?php endif; ?>
+</body>
+</html>
+```
+
+**Pasos Clave para la Implementación:**
+
+1.  **Obtener Credenciales de la API de Google:**
+    * Ve a la [Consola de Google Cloud Platform](https://console.cloud.google.com/).
+    * Crea o selecciona un proyecto.
+    * Ve a "APIs y servicios" > "Credenciales".
+    * Crea una nueva credencial > "ID de cliente de OAuth".
+    * Selecciona "Aplicación web".
+    * Configura los "Orígenes de JavaScript autorizados" (si usas AJAX en diferentes dominios) y los "URI de redireccionamiento autorizados" (la URL a la que Google redirigirá después de la autorización, por ejemplo, la misma página donde tienes este script).
+    * Descarga el archivo JSON de las credenciales. Reemplaza `'path/to/your/credentials.json'` en el código con la ruta real a este archivo.
+
+2.  **Configurar la Autenticación OAuth 2.0:**
+    * El código incluye un flujo básico de autenticación. La primera vez que un usuario acceda a la página, será redirigido a Google para dar su consentimiento.
+    * El token de acceso se guarda en la sesión. Necesitarás una forma más robusta de gestionar los tokens en una aplicación real (por ejemplo, almacenándolos en una base de datos asociados al usuario).
+    * El `access_type` se establece en `'offline'` para obtener un `refresh_token`, que permite a tu aplicación obtener un nuevo token de acceso cuando el actual expira, incluso si el usuario no está activo.
+
+3.  **Implementar la Lógica de Solicitud de Sala:**
+    * Integra este código en tu flujo de solicitud de salas. Cuando un profesor solicite una sala y la solicitud sea aprobada (o inmediatamente, según tu lógica), llama a la función `agregarEventoACalendario`.
+    * Asegúrate de tener los datos necesarios: fecha de inicio, fecha de fin, nombre de la sala, motivo, y posiblemente el email del profesor si necesitas un ID de calendario específico.
+
+4.  **Manejo de Errores y Seguridad:**
+    * Implementa un manejo de errores más completo para los fallos en la comunicación con la API de Google.
+    * Protege el archivo de credenciales y la gestión de los tokens de acceso.
+
+**Integración con AJAX (Opcional):**
+
+Si deseas usar AJAX, podrías tener un formulario en tu página que se envíe mediante JavaScript a un endpoint PHP. Este endpoint PHP procesaría la solicitud de sala (guardándola en tu sistema) y luego utilizaría la función `agregarEventoACalendario` para crear el evento en el calendario. El PHP luego devolvería una respuesta (JSON, por ejemplo) al JavaScript para mostrar un mensaje de éxito o error al usuario sin recargar la página.
+
+**Ejemplo de flujo con AJAX:**
+
+1.  El usuario completa el formulario de solicitud de sala en el frontend (HTML/JavaScript).
+2.  JavaScript (usando `fetch` o `XMLHttpRequest`) envía los datos del formulario a un script PHP (por ejemplo, `procesar_solicitud.php`).
+3.  `procesar_solicitud.php` recibe los datos, los valida, los guarda en tu base de datos y luego llama a la función `agregarEventoACalendario`.
+4.  `procesar_solicitud.php` devuelve una respuesta JSON indicando el éxito o el fallo de la operación.
+5.  JavaScript en el frontend recibe la respuesta JSON y actualiza la interfaz de usuario para informar al profesor.
+
+**Próximos Pasos:**
+
+1.  **Configura tus credenciales de la API de Google.**
+2.  **Instala la biblioteca de cliente de Google para PHP usando Composer.**
+3.  **Adapta el código PHP proporcionado a la lógica de tu sistema de solicitud de salas.**
+4.  **Implementa la parte del formulario en tu frontend.**
+5.  **Considera la integración con AJAX para una mejor experiencia de usuario.**
+6.  **Realiza pruebas exhaustivas.**
+
+Este es un punto de partida. ¡No dudes en preguntar si tienes dudas sobre algún paso específico!

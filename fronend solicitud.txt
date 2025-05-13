@@ -1,0 +1,455 @@
+¡Excelente idea! Llevar la interacción directamente al calendario hará que la experiencia del usuario sea mucho más intuitiva. Vamos a esbozar la estructura del frontend (HTML, CSS, JavaScript) pensando en el patrón MVC (aunque en el frontend a veces se le llama más comúnmente MVVM o simplemente una separación de responsabilidades).
+
+**1. Vista (HTML):**
+
+```html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solicitud de Salas</title>
+    <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Solicitud de Salas</h1>
+
+        <div class="selector-mes">
+            <label for="mes">Seleccionar Mes:</label>
+            <select id="mes"></select>
+        </div>
+
+        <div class="calendario-grilla">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Bloque 1</th>
+                        <th>Bloque 2</th>
+                        <th>Bloque 3</th>
+                        <th>Bloque 4</th>
+                        <th>Bloque 5</th>
+                        <th>Bloque 6</th>
+                        <th>Bloque 7</th>
+                        <th>Bloque 8</th>
+                    </tr>
+                </thead>
+                <tbody id="calendario-body">
+                    </tbody>
+            </table>
+        </div>
+
+        <div id="modal-solicitud" class="modal">
+            <div class="modal-content">
+                <span class="cerrar-modal">&times;</span>
+                <h2>Solicitar Sala</h2>
+                <form id="formulario-solicitud">
+                    <div class="form-group">
+                        <label for="NombreFuncionario">Profesor:</label>
+                        <input type="text" id="NombreFuncionario" value="[Nombre del Profesor Logueado]" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label for="fecha_solicitada">Fecha:</label>
+                        <input type="text" id="fecha_solicitada" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label for="bloque_solicitado">Bloque:</label>
+                        <input type="text" id="bloque_solicitado" readonly>
+                    </div>
+                    <div class="botones-modal">
+                        <button type="button" id="btn-eliminar">Eliminar</button>
+                        <button type="submit">Enviar Solicitud</button>
+                        <button type="button" id="btn-cancelar">Cancelar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+```
+
+**2. Modelo (JavaScript - Manejo de Datos):**
+
+```javascript
+// script.js
+
+const calendarioBody = document.getElementById('calendario-body');
+const selectorMes = document.getElementById('mes');
+const modalSolicitud = document.getElementById('modal-solicitud');
+const cerrarModal = document.querySelector('.cerrar-modal');
+const formularioSolicitud = document.getElementById('formulario-solicitud');
+const inputNombreProfesor = document.getElementById('NombreFuncionario');
+const inputFechaSolicitada = document.getElementById('fecha_solicitada');
+const inputBloqueSolicitado = document.getElementById('bloque_solicitado');
+const btnEliminar = document.getElementById('btn-eliminar');
+const btnCancelar = document.getElementById('btn-cancelar');
+
+let solicitudes = []; // Aquí almacenaremos las solicitudes obtenidas del backend
+let mesActual = new Date().getMonth(); // 0 = Enero, 11 = Diciembre
+let añoActual = new Date().getFullYear();
+const diasSemana = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const meses = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const bloquesHorarios = [1, 2, 3, 4, 5, 6, 7, 8]; // Definir tus bloques horarios
+
+// Suponiendo que el nombre del profesor ya está disponible desde el login
+const profesorLogueado = "Nombre del Profesor Ejemplo"; // Reemplazar con el valor real
+
+// Función para obtener las solicitudes del backend
+async function obtenerSolicitudes(mes, año) {
+    try {
+        const response = await fetch(`obtener_solicitudes.php?mes=${mes + 1}&año=${año}`); // Ajusta la URL si es necesario
+        solicitudes = await response.json();
+        renderizarCalendario(mes, año);
+    } catch (error) {
+        console.error('Error al obtener las solicitudes:', error);
+    }
+}
+
+// Función para enviar la solicitud al backend
+async function enviarSolicitud(formData) {
+    try {
+        const response = await fetch('procesar_solicitud.php', {
+            method: 'POST',
+            body: formData
+        });
+        const resultado = await response.json();
+        if (resultado.success) {
+            alert(resultado.success);
+            modalSolicitud.style.display = 'none';
+            obtenerSolicitudes(mesActual, añoActual); // Recargar el calendario
+        } else if (resultado.error) {
+            alert(resultado.error);
+        }
+    } catch (error) {
+        console.error('Error al enviar la solicitud:', error);
+    }
+}
+
+// Función para eliminar una solicitud (necesitarás un endpoint en el backend)
+async function eliminarSolicitud(fecha, bloque) {
+    // Implementar lógica para identificar la solicitud a eliminar
+    // y hacer una petición DELETE al backend
+    console.log(`Eliminar solicitud para ${fecha}, bloque ${bloque}`);
+    // Después de eliminar, recargar el calendario
+    // obtenerSolicitudes(mesActual, añoActual);
+}
+
+// Inicializar el selector de meses
+meses.forEach((nombreMes, index) => {
+    const option = document.createElement('option');
+    option.value = index;
+    option.textContent = nombreMes;
+    option.selected = index === mesActual;
+    selectorMes.appendChild(option);
+});
+
+selectorMes.addEventListener('change', (event) => {
+    mesActual = parseInt(event.target.value);
+    renderizarCalendario(mesActual, añoActual);
+});
+
+// Cerrar la modal
+cerrarModal.addEventListener('click', () => {
+    modalSolicitud.style.display = 'none';
+});
+
+window.addEventListener('click', (event) => {
+    if (event.target === modalSolicitud) {
+        modalSolicitud.style.display = 'none';
+    }
+});
+
+formularioSolicitud.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const formData = new FormData(formularioSolicitud);
+    enviarSolicitud(formData);
+});
+
+btnCancelar.addEventListener('click', () => {
+    modalSolicitud.style.display = 'none';
+});
+
+btnEliminar.addEventListener('click', () => {
+    // Aquí deberías tener la lógica para identificar la solicitud específica a eliminar
+    // Basándote en la fecha y el bloque mostrados en la modal
+    eliminarSolicitud(inputFechaSolicitada.value, inputBloqueSolicitado.value);
+    modalSolicitud.style.display = 'none';
+});
+
+// Cargar las solicitudes iniciales
+obtenerSolicitudes(mesActual, añoActual);
+```
+
+**3. Controlador (JavaScript - Lógica de la Interfaz de Usuario):**
+
+```javascript
+// script.js (continuación)
+
+function obtenerDiasEnMes(mes, año) {
+    return new Date(año, mes + 1, 0).getDate();
+}
+
+function obtenerPrimerDiaSemana(mes, año) {
+    return new Date(año, mes, 1).getDay(); // 0 = Domingo, 1 = Lunes, ...
+}
+
+function formatearFecha(dia, mes, año) {
+    const mesFormateado = (mes + 1).toString().padStart(2, '0');
+    const diaFormateado = dia.toString().padStart(2, '0');
+    return `${año}-${mesFormateado}-${diaFormateado}`;
+}
+
+function renderizarCalendario(mes, año) {
+    calendarioBody.innerHTML = ''; // Limpiar el calendario anterior
+    const diasDelMes = obtenerDiasEnMes(mes, año);
+    const primerDia = obtenerPrimerDiaSemana(mes, año);
+
+    let diaActual = 1;
+
+    for (let i = 0; i < 6; i++) { // Hasta 6 filas para cubrir todos los meses
+        const fila = document.createElement('tr');
+
+        // Celda para la fecha (solo de lunes a viernes)
+        if (i > 0 || primerDia <= 5) { // Empezar a mostrar fechas a partir del lunes de la primera semana
+            for (let j = 0; j < 7; j++) { // 7 días de la semana
+                if ((i === 0 && j < primerDia) || diaActual > diasDelMes || j > 4) {
+                    const celdaFecha = document.createElement('td');
+                    fila.appendChild(celdaFecha);
+                } else if (j >= primerDia && j <= 4 && diaActual <= diasDelMes) {
+                    const celdaFecha = document.createElement('td');
+                    celdaFecha.textContent = formatearFecha(diaActual, mes, año).slice(-5); // Mostrar solo DD-MM
+                    fila.appendChild(celdaFecha);
+                    diaActual++;
+                } else if (i > 0 && j >= 0 && j <= 4 && diaActual <= diasDelMes) {
+                    const celdaFecha = document.createElement('td');
+                    celdaFecha.textContent = formatearFecha(diaActual, mes, año).slice(-5); // Mostrar solo DD-MM
+                    fila.appendChild(celdaFecha);
+                    diaActual++;
+                }
+            }
+        } else {
+            // Si la primera semana no tiene días de lunes a viernes, agregar celdas vacías para la fecha
+            for (let j = 0; j < 1; j++) {
+                const celdaFecha = document.createElement('td');
+                fila.appendChild(celdaFecha);
+            }
+        }
+
+        // Celdas para los bloques horarios
+        for (let k = 0; k < bloquesHorarios.length; k++) {
+            const celdaBloque = document.createElement('td');
+            if (fila.children[0] && fila.children[0].textContent) {
+                const fechaCelda = `${año}-${(mes + 1).toString().padStart(2, '0')}-${fila.children[0].textContent.split('-')[0]}`;
+                const bloqueActual = bloquesHorarios[k];
+                const ocupado = solicitudes.some(solicitud =>
+                    solicitud.fecha_solicitada === fechaCelda &&
+                    parseInt(solicitud.numero_bloque) === bloqueActual
+                );
+
+                celdaBloque.classList.add('bloque');
+                celdaBloque.dataset.fecha = fechaCelda;
+                celdaBloque.dataset.bloque = bloqueActual;
+
+                if (ocupado) {
+                    celdaBloque.classList.add('ocupado');
+                    celdaBloque.title = solicitudes.find(solicitud =>
+                        solicitud.fecha_solicitada === fechaCelda &&
+                        parseInt(solicitud.numero_bloque) === bloqueActual
+                    )?.NombreFuncionario || 'Ocupado';
+                } else if (fila.children[0].textContent) {
+                    celdaBloque.classList.add('disponible');
+                    celdaBloque.addEventListener('click', mostrarModalSolicitud);
+                }
+            }
+            fila.appendChild(celdaBloque);
+        }
+
+        if (fila.children.length > 1) { // Asegurarse de que la fila tenga celdas de bloques
+            calendarioBody.appendChild(fila);
+        }
+    }
+}
+
+function mostrarModalSolicitud(event) {
+    const celda = event.target;
+    if (celda.classList.contains('disponible')) {
+        const fechaSeleccionada = celda.dataset.fecha;
+        const bloqueSeleccionado = celda.dataset.bloque;
+
+        inputNombreProfesor.value = profesorLogueado;
+        inputFechaSolicitada.value = fechaSeleccionada;
+        inputBloqueSolicitado.value = bloqueSeleccionado;
+
+        // Aquí podrías cargar información adicional si es necesario
+
+        modalSolicitud.style.display = 'block';
+    }
+}
+```
+
+**3. Estilos (CSS - `estilos.css`):**
+
+```css
+body {
+    font-family: sans-serif;
+    margin: 20px;
+    background-color: #f4f4f4;
+}
+
+.container {
+    max-width: 960px;
+    margin: 0 auto;
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+h1 {
+    text-align: center;
+    color: #333;
+    margin-bottom: 20px;
+}
+
+.selector-mes {
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+label {
+    margin-right: 10px;
+    font-weight: bold;
+}
+
+#mes {
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+}
+
+.calendario-grilla {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: center;
+}
+
+th {
+    background-color: #f0f0f0;
+}
+
+.bloque {
+    cursor: pointer;
+}
+
+.disponible {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.ocupado {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed; /* Stay in place */
+    z-index: 1; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+}
+
+.modal-content {
+    background-color: #fefefe;
+    margin: 15% auto; /* 15% from the top and centered */
+    padding: 20px;
+    border: 1px solid #888;
+    width: 80%; /* Could be more or less, depending on screen size */
+    border-radius: 8px;
+    position: relative;
+}
+
+.cerrar-modal {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.cerrar-modal:hover,
+.cerrar-modal:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+input[type=text] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.botones-modal button {
+    padding: 10px 15px;
+    margin-right: 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1em;
+}
+
+.botones-modal button[type="submit"] {
+    background-color: #4CAF50;
+    color: white;
+}
+
+.botones-modal button#btn-cancelar {
+    background-color: #f44336;
+    color: white;
+}
+
+.botones-modal button#btn-eliminar {
+    background-color: #ff9800;
+    color: white;
+}
+
+.botones-modal button:hover {
+    opacity: 0.8;
+}
+```
+
+**Explicación:**
+
+* **HTML:** Estructura básica con un selector de mes, la tabla del calendario (con un `<tbody>` vacío que se llenará con JavaScript) y la ventana modal para la solicitud.
+* **Modelo (JavaScript):**
+    * Mantiene el estado de las solicitudes (`solicitudes`), el mes y año actual.
+    * Define funciones para obtener datos del backend (`obtenerSolicitudes`),
